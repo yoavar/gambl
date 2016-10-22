@@ -75,13 +75,12 @@ class MatchPipeline(object):
             return None
         stadium_obj = self.get_stadium(item.get('stadium', ''))
 
-        weather = item.get('weather', '') or ''
         attendance = item.get('attendance', 0)
 
         match = Match.objects.filter(league=league, home_team=home_team, away_team=away_team, match_date=match_date)
         if len(match) == 0:
             match = Match(league=league, home_team=home_team, away_team=away_team, match_date=match_date,
-                              referee=referee, weather=weather, crowd=attendance, stadium=stadium_obj, minutes_played=minutes_played)
+                              referee=referee, crowd=attendance, stadium=stadium_obj, minutes_played=minutes_played)
             match.save()
         else:
             match = match[0]
@@ -191,11 +190,11 @@ class MatchPipeline(object):
         return team
 
     def get_stadium(self, stadium_name):
-        s = Stadium.objects.filter(name=stadium_name)
+        s = Stadium.objects.filter(title=stadium_name.lower())
         if len(s) > 0:
             return s[0]
         else:
-            s = Stadium(name=stadium_name)
+            s = Stadium(title=stadium_name.lower())
             s.save()
             return s
 

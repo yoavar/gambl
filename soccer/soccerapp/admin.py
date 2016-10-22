@@ -2,7 +2,7 @@ __author__ = 'yoav'
 
 from django.contrib import admin
 
-from soccer.soccerapp.models import Team, League, Player, Match, Position, TeamRank, PlayerMatch, TeamMatch
+from soccer.soccerapp.models import Team, League, Player, Match, Position, TeamRank, PlayerMatch, TeamMatch, Stadium
 
 
 admin.site.register(Team)
@@ -13,7 +13,50 @@ class PositionAdmin(admin.ModelAdmin):
     list_display = ('title', 'full_title', 'position_group')
 admin.site.register(Position, PositionAdmin)
 
+class StadiumAdmin(admin.ModelAdmin):
+    list_display = ('title', 'max_size', 'construction_year', 'cords_x', 'cords_y')
 
+    actions = ('merge',)
+    def cords_x(self, obj):
+        if not obj.cords:
+                return ''
+        return obj.cords.x
+    cords_x.short_description = 'Latitude'
+
+    def cords_y(self, obj):
+        if not obj.cords:
+            return ''
+        return obj.cords.y
+    cords_y.short_description = 'Longitude'
+
+    def merge(self, request, queryset):
+        main = queryset[0]
+        tail = queryset[1:]
+
+        for other_stadium in tail:
+            if main.cords is None:
+               main.cords = other_stadium.cords
+            if main.max_size is None:
+               main.max_size = other_stadium.max_size
+            if main.construction_year is None:
+               main.construction_year = other_stadium.construction_year
+
+            for match in other_stadium.matches.all():
+                match.stadium = main
+                match.save()
+            other_stadium.delete()
+        main.save()
+
+
+
+
+
+
+
+
+
+
+admin.site.register(Stadium, StadiumAdmin)
 
 class LeagueAdmin(admin.ModelAdmin):
     list_display = ('nami', 'year', 'country', 'rank', 'total_round', 'type')

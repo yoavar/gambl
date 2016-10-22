@@ -100,7 +100,7 @@ class MatchSpider(Spider):
         match_details = defaultdict(defaultdict)
         match_details['home_team_name'] = match_center['home']['name']
         match_details['away_team_name'] = match_center['away']['name']
-        match_details['date'] = match_center['startDate']
+        match_details['date'] = match_center['startTime']
         match_details['half_score'] = match_center['htScore']
         match_details['final_score'] = match_center['score']
         match_details['weather'] = match_center['weatherCode']
@@ -166,7 +166,7 @@ class MatchSpider(Spider):
             for q in qualies:
                 q_type = q['type']['displayName']
                 if q_type == 'Penalty':
-                    events_dict['penalties'][event['playerId'].append(1)]
+                    events_dict['penalties'][event['playerId']].append(1)
         return events_dict
 
     def get_league_item(self, res):

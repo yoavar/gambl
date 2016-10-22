@@ -1,8 +1,12 @@
 __author__ = 'yoav'
 
+
 from django.db import models
-
-
+import pandas as pd
+import urllib
+import json
+from django.conf import settings
+from soccer.soccerapp.weather import WeatherWorker
 
 class League(models.Model):
     nami = models.CharField(max_length=200)
@@ -97,24 +101,61 @@ class Cords(models.Model):
     x = models.FloatField()
     y = models.FloatField()
 
+
+class StadiumManager(models.Manager):
+      stadiums_file_name = '~/gambl/data/stadiums_data.csv'
+
+      def set_stadiums_cords_and_max_size(self):
+          stadiums_df = pd.read_csv(self.stadiums_file_name)
+          for ind, row in stadiums_df.iterrows():
+              stadium_name = row['Stadium'].lower()
+              s = Stadium.objects.filter(title=stadium_name)
+              if len(s) > 0:
+                  s = s[0]
+              else:
+                  s = Stadium(title=stadium_name)
+              s_cords = Cords(x=row['Latitude'], y=row['Longitude'])
+              s_cords.save()
+              s.max_size=row['Capacity']
+              s.cords=s_cords
+              s.save()
+
 class Stadium(models.Model):
     title = models.CharField(max_length=100)
     max_size = models.IntegerField(null=True)
     construction_year = models.DateField(null=True)
-    cords = models.ForeignKey(Cords, related_name='stadiums', null=True)##TODO adjust scraping to crate these objects
+    cords = models.ForeignKey(Cords, related_name='stadiums', null=True)
+
+    objects = StadiumManager()
+
+    def guess_max_size(self):
+        matches_crowd = self.matches.values_list('crowd', flat=True)
+        self.max_size = max(matches_crowd)
+        self.save()
+
+class MatchManager(models.Manager):
+
+    def set_matches_weather(self):
+        weather_obj = WeatherWorker()
+        for m in Match.objects.all():
+            weather = weather_obj.get_match_weather(m)
+            if weather:
+                m.weather = weather
+                m.save()
 
 class Match(models.Model):
     league = models.ForeignKey(League, related_name='matches')
     home_team = models.ForeignKey(Team, related_name='home_matches')
     away_team = models.ForeignKey(Team, related_name='away_matches')
-    match_date = models.DateField()
+    match_date = models.DateTimeField()
     round = models.IntegerField(default=0)
-    weather = models.CharField(max_length=20, null=True)
+    weather = models.CharField(max_length=200, null=True)
     referee = models.ForeignKey(Referee, related_name='matches', null=True)
     stadium = models.ForeignKey(Stadium, null=True, related_name='matches')
     crowd = models.IntegerField(default=0)
     minutes_played = models.IntegerField()
 
+    objects = MatchManager()
     class Meta():
         unique_together = ('league', 'home_team', 'away_team', 'match_date')
 
@@ -138,17 +179,21 @@ class Match(models.Model):
         red_cards = sum([x.red_cards for x in match_players])
         return yellow_cards, red_cards
 
+    def get_total_penalties(self):
+        match_players = PlayerMatch.objects.filter(team__in=[x for x in self.teams.all()])
+        total_penatlies = sum([x.penalties for x in match_players])
+        return total_penatlies
+
     def get_match_type(self):
         if self.league.type == 'league':
             return 'regular'
         elif self.league.type == 'cup':
             return 'knockout'
         else:
-            if self.match.date.month >= 1:
+            if self.match_date.month >= 1:
                 return 'knockout'
             else:
                 return 'regular'
-
 
 
 class TeamMatch(models.Model):
@@ -171,7 +216,7 @@ class PlayerMatch(models.Model):
     opening = models.BooleanField()
     enter_minute = models.IntegerField(null=True)
     exit_minute = models.IntegerField(null=True)
-    yellow_cards = models.IntegerField(null=True)## TODO something not working with the cards parsing :(
+    yellow_cards = models.IntegerField(null=True)
     red_cards = models.IntegerField(null=True)
     goals = models.IntegerField(null=True)
     assists = models.IntegerField(null=True)

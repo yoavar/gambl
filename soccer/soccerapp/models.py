@@ -1,12 +1,19 @@
 __author__ = 'yoav'
 
-
 from django.db import models
 import pandas as pd
 import urllib
 import json
 from django.conf import settings
 from soccer.soccerapp.weather import WeatherWorker
+import re
+from django.db.models import Count
+
+class ExternalData(models.Model):
+    data_type = models.CharField(max_length=50)
+    related_obj = models.CharField(max_length=50, null=True)
+    data_info = models.CharField(max_length=50, null=True)
+    data = models.CharField(max_length=10000, null=True)
 
 class League(models.Model):
     nami = models.CharField(max_length=200)
@@ -22,15 +29,15 @@ class League(models.Model):
                             'championship': {'country': 'england', 'type': 'league', 'rank': 2},
                         'premiereleague': {'country': 'england', 'type': 'league', 'rank': 1},
                         'coppaitalia': {'country': 'italy', 'type': 'cup', 'rank': 1},
-                        'uefachampionsleague': {'country': 'intl', 'type': 'mix', 'rank': 1},}
-
+                        'uefachampionsleague': {'country': 'intl', 'type': 'mix', 'rank': 1},
+                        'uefacleague': {'country': 'intl', 'type': 'mix', 'rank': 1},
+                        'ligue1': {'country': 'france', 'type': 'league', 'rank': 1},}
 
     class Meta():
         unique_together = ('nami', 'year')
 
     def get_pretty_name(self):
         return "{0} {1}".format(self.nami, self.year)
-
 
     def set_meta_features(self):
         meta_dict = self.league_meta_dict.get(self.nami, None)
@@ -40,9 +47,50 @@ class League(models.Model):
             self.rank = meta_dict['rank']
             self.save()
 
+    def get_matches_per_team(self):
+        return self.matches.all().values_list('teams__team__nami')\
+            .annotate(cnt=Count('*')).values_list('cnt', 'teams__team__nami')
+
+    def get_league_match_ids(self):
+        external_name = '{0}-{1}'.format(self.nami, self.year)
+        external_data = ExternalData.objects.filter(data_info='[\'who scored relevant matches ids\']',
+                                                    related_obj=external_name)
+        if len(external_data) == 0:
+            print('no external data')
+            return []
+        else:
+            match_ids = re.findall('\d+', external_data[0].data)
+            if not match_ids:
+                return []
+            return match_ids
+
+    @classmethod
+    def crawl_who_score_matches(cls, match_ids):
+        from soccerscraper.soccerscraper.spiders.whoscored_match import MatchSpider
+        import scrapy
+        from scrapy.crawler import CrawlerProcess
+        process = CrawlerProcess({
+            'USER_AGENT': 'Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1)'
+        })
+        process.crawl(MatchSpider, match_ids=match_ids)
+        process.start()
+
+
+class TeamManager(models.Manager):
+
+    def get_or_create(self, team_nami):
+        t = Team.objects.filter(nami=team_nami)
+        if len(t) > 0:
+            return t[0]
+        else:
+            t = Team(nami=team_nami)
+            t.save()
+            return t
 
 class Team(models.Model):
     nami = models.CharField(max_length=200)
+
+    objects = TeamManager()
 
 class PlayerManager(models.Manager):
       pass
@@ -153,7 +201,7 @@ class Match(models.Model):
     referee = models.ForeignKey(Referee, related_name='matches', null=True)
     stadium = models.ForeignKey(Stadium, null=True, related_name='matches')
     crowd = models.IntegerField(default=0)
-    minutes_played = models.IntegerField()
+    minutes_played = models.IntegerField(default=90)
 
     objects = MatchManager()
     class Meta():
@@ -208,6 +256,14 @@ class TeamMatch(models.Model):
     class Meta():
         unique_together = ('team', 'match')
 
+class BetMatch(models.Model):
+    match = models.ForeignKey(Match, related_name='bets')
+    type = models.CharField(max_length=50)##ht_win, draw, aw_win, over_goals_d
+    bookie_name = models.CharField(max_length=50, null=True)##Bet365, WilliamHill
+    value = models.FloatField()
+
+    class Meta():
+        unique_together = ('match', 'type', 'bookie_name')
 
 class PlayerMatch(models.Model):
     player = models.ForeignKey(Player, related_name='matches')

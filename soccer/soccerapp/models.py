@@ -256,6 +256,24 @@ class TeamMatch(models.Model):
     class Meta():
         unique_together = ('team', 'match')
 
+    def get_home_away(self):
+        if self.match.home_team == self.team:
+            return 'home'
+        else:
+            return 'away'
+
+    def get_team_match_result(self):
+        teams = self.match.teams.all().values_list('team', 'goals_final')
+        if teams[0][1] == teams[1][1]:
+            return 'draw'
+        else:
+            winning_team = sorted(teams, key=lambda x: x[1], reverse=True)[0][0]
+            if self.team == winning_team:
+                return 'win'
+            else:
+                return 'loss'
+
+
 class BetMatch(models.Model):
     match = models.ForeignKey(Match, related_name='bets')
     type = models.CharField(max_length=50)##ht_win, draw, aw_win, over_goals_d

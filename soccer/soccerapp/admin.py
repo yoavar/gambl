@@ -46,20 +46,32 @@ class StadiumAdmin(admin.ModelAdmin):
                 match.save()
             other_stadium.delete()
         main.save()
-
-
-
-
-
-
-
-
-
+## TODO -- class for checking what data is missing.
+## Leagues (by years), matches(per league), matches data(model factors), players data
 
 admin.site.register(Stadium, StadiumAdmin)
 
 class LeagueAdmin(admin.ModelAdmin):
-    list_display = ('nami', 'year', 'country', 'rank', 'total_round', 'type')
+    list_display = ('nami', 'year', 'country', 'rank', 'total_round', 'type', 'matches_cnt', 'teams_cnt',
+                    'stadiums_cnt', 'players_cnt', 'referees_cnt',)
+    def matches_cnt(self, obj):
+        return obj.matches.all().count()
+    matches_cnt.short_description = 'Matches Count'
+    def teams_cnt(self, obj):
+        return obj.matches.all().values_list('teams__team').distinct().count()
+    teams_cnt.short_description = 'Teams Count'
+    def stadiums_cnt(self, obj):
+        return obj.matches.all().values_list('stadium').distinct().count()
+    stadiums_cnt.short_description = 'Stadiums Count'
+    def players_cnt(self, obj):
+        team_matches = obj.matches.all().values_list('teams__team', flat=True)
+        players_cnt = PlayerMatch.objects.filter(team_id__in=team_matches).distinct().count()
+        return players_cnt
+    players_cnt.short_description = 'Players Count'
+    def referees_cnt(self, obj):
+        return obj.matches.all().values_list('referee').distinct().count()
+    referees_cnt.short_description = 'Referees Count'
+
 admin.site.register(League, LeagueAdmin)
 
 
